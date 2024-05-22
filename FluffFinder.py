@@ -6,29 +6,64 @@ load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI(api_key=api_key)
 
-# base_instruction = "Your purpose is to evaluate and score text on their fluff content on a scale from 1 (a lot of fluff) to 5 (no fluff). Your only output is the score. (1-5)"
-base_instruction = "Your purpose is to critically evaluate a number of texts on their level of Fluff"
-fluff_definition = "Fluff refers to any content that is unnecessary, lacks substance, or does not directly contribute to the main message or purpose of a given text."
-fluff_scores = "1 (no Fluff), 2 (Little Fluff), 3 (Some Fluff), 4 (Considerable Fluff), 5 (Too much Fluff)."
-output_format = "score; reason"
-vanilla_instruction = f'Provide a numerical Fluff score for this text according to the following scale: {fluff_scores} Also provide a short and concise reason for your score, no full sentence needed. Your output consists only of the numerical score and the reason in the following format: {output_format}'
-# fluff_characteristics = 
-interest_categoriess = {
-        'General Interest': 'Written to appeal to a broad audience, covering topics intended to engage or entertain readers without requiring specialized knowledge.',
-        'Special Interest': 'Written to appeal to a pre-informed audience with personal interest, providing information required for decision making.',
-        'Professional Interest': 'Written to appeal to a professional audience with deep prior knowledge, describing products and services for professional use.'
-        }
+# Define the base instruction and related strings
+BASE_INSTRUCTION = (
+    "Your purpose is to critically evaluate a number of texts on their level of Fluff. "
+    "Fluff refers to any content that is unnecessary, lacks substance, or does not directly contribute "
+    "to the main message or purpose of a given text."
+)
+FLUFF_SCORES = "1 (no Fluff), 2 (Little Fluff), 3 (Some Fluff), 4 (Considerable Fluff), 5 (Too much Fluff)."
+VANILLA_SCORE_INSTRUCTION = f"Provide a numerical Fluff score for this text according to the following scale: {FLUFF_SCORES} Your only output is the score (1-5)."
+VANILLA_REASON_INSTRUCTION = "Provide a concise reason for your score in less than 15 words based on the text, your score and your understanding of Fluff."
+
+def get_gpt_completion(messages):
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            temperature=0.0,
+            messages=messages
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+def vanilla_fluff(text): ##TODO: Add possibility to only get score
+    """
+    Evaluate the fluff content of the given text and provide a score and reason.
+    
+    Args:
+    text (str): The text to be evaluated.
+    
+    Returns:
+    tuple: A tuple containing the score (int) and reason (str).
+    """
+    # First, get the fluff score
+    messages = [
+        {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
+        {"role": "user", "content": text}
+    ]
+    score_content = get_gpt_completion(messages)
+    
+    if score_content is None:
+        return None, "Failed to get score."
+
+    try:
+        score = int(score_content.strip())
+    except ValueError:
+        return None, "Failed to parse score."
 
 
-def vanilla_fluff(text):
-    completion = client.chat.completions.create(
-        model="gpt-3.5-turbo", temperature=0.0, # Temperature of 0.0 ensures deterministic results
-        messages=[
-            {"role": "system", "content": base_instruction + fluff_definition + vanilla_instruction},
-            {"role": "user", "content": text}
-        ]
-    )
-    output = completion.choices[0].message.content
-    score = int(output.split(";")[0].strip())
-    reason = output.split(";")[1].strip()
-    return score, reason, output
+    # Second, get the reason for the fluff score
+    messages = [
+        {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
+        {"role": "user", "content": text},
+        {"role": "assistant", "content": score_content},
+        {"role": "user", "content": VANILLA_REASON_INSTRUCTION}
+    ]
+    reason = get_gpt_completion(messages)
+
+    if reason is None:
+        return score, "Failed to get reason."
+
+    return score, reason.strip()
