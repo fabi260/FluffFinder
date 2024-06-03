@@ -11,11 +11,7 @@ api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI(api_key=api_key)
 
 # Define constants
-BASE_INSTRUCTION = (
-    "Your purpose is to critically evaluate a number of texts on their level of Fluff. "
-    "Fluff refers to any content that is unnecessary, lacks substance, or does not directly contribute "
-    "to the main message or purpose of a given text."
-)
+BASE_INSTRUCTION = "Your purpose is to critically evaluate a number of texts on their level of Fluff. Fluff refers to any content that is unnecessary, lacks substance, or does not directly contribute to the main message or purpose of a given text."
 FLUFF_SCORES = "1 (no Fluff), 2 (Little Fluff), 3 (Some Fluff), 4 (Considerable Fluff), 5 (Too much Fluff)."
 VANILLA_SCORE_INSTRUCTION = f"Provide a numerical Fluff score for this text according to the following scale: {FLUFF_SCORES} Your ONLY output is one numerical number (1-5)."
 VANILLA_REASON_INSTRUCTION = "Provide a concise reason for your score in less than 15 words based on the text, your score and your understanding of Fluff."
@@ -47,7 +43,7 @@ def get_completion(messages, model, temperature): ##TODO: Add llama and claude m
         raise ValueError(f"Unsupported model: {model}")
 
 # Vanilla Fluff Evaluator
-def vanilla_score(text, model, temperature):
+def vanilla_score(text, model, temperature, reason=False):
     # Get the fluff score
     messages = [
         {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
@@ -62,16 +58,13 @@ def vanilla_score(text, model, temperature):
     except ValueError:
         return None, "Failed to parse score."
     
-    # Get the reason for the fluff score
-    messages = [
-        {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
-        {"role": "user", "content": text},
-        {"role": "assistant", "content": score_content},
-        {"role": "user", "content": VANILLA_REASON_INSTRUCTION}
-    ]
-    reason = get_completion(messages, model, temperature)
-
-    if reason is None:
-        return score, "Failed to get reason."
-    
-    return score, reason.strip()
+    # Get the reason for the fluff score if requested
+    if not reason:
+        return score, None
+    else:
+        messages.append({"role": "assistant", "content": score_content})
+        messages.append({"role": "user", "content": VANILLA_REASON_INSTRUCTION})
+        reason = get_completion(messages, model, temperature)
+        if reason is None:
+            return score, "Failed to get reason."
+        return score, reason.strip()
