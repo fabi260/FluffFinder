@@ -2,6 +2,9 @@ from dotenv import load_dotenv
 import os
 from openai import OpenAI
 import tiktoken
+from krippendorff import alpha
+from bootstrap_alpha import bootstrap
+import numpy as np
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -52,15 +55,15 @@ def vanilla_score(text, model, temperature, reason=False):
     score_content = get_completion(messages, model, temperature)
     
     if score_content is None:
-        return None, "Failed to get score."
+        return "Failed to get score."
     try:
         score = int(score_content.strip())
     except ValueError:
-        return None, "Failed to parse score."
+        return "Failed to parse score."
     
     # Get the reason for the fluff score if requested
     if not reason:
-        return score, None
+        return score
     else:
         messages.append({"role": "assistant", "content": score_content})
         messages.append({"role": "user", "content": VANILLA_REASON_INSTRUCTION})
@@ -68,3 +71,22 @@ def vanilla_score(text, model, temperature, reason=False):
         if reason is None:
             return score, "Failed to get reason."
         return score, reason.strip()
+
+# Kippendorff's alpha analysis
+def kippendorff_analysis(value_counts, level_of_measurement='ordinal'):
+    # Calculate Krippendorff's alpha
+    k_alpha = alpha(value_counts=value_counts, level_of_measurement=level_of_measurement)
+
+    ci, est = bootstrap(value_counts=value_counts, level_of_measurement=level_of_measurement, num_iterations=1000, confidence_level=0.95, sampling_method= 'krippendorff', return_bootstrap_estimates=True)
+    
+    confidence_at_least_667 = np.mean(est >= 0.667)
+    confidence_at_least_8 = np.mean(est >= 0.8)
+    confidence_lessthan_667 = np.mean(est < 0.667)
+    
+    return print(
+        f"Krippendorff's alpha: {k_alpha:.3f}\n"
+        f"95% CI: {ci[0]:.3f} - {ci[1]:.3f}\n"
+        f"Confidence of data being reliable and alpha being at least 0.8: {confidence_at_least_8 * 100:.1f}%\n"
+        f"Confidence of data being tentatively reliable and alpha being at least 0.667: {confidence_at_least_667 * 100:.1f}%\n"
+        f"Confidence of data being unreliable and alpha being less than 0.667: {confidence_lessthan_667 * 100:.1f}%\n"
+    )
