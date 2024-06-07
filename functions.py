@@ -73,20 +73,33 @@ def vanilla_score(text, model, temperature, reason=False):
         return score, reason.strip()
 
 # Kippendorff's alpha analysis
-def kippendorff_analysis(value_counts, level_of_measurement='ordinal'):
+def kippendorff_analysis(value_counts, level_of_measurement='ordinal', out='data'):
     # Calculate Krippendorff's alpha
-    k_alpha = alpha(value_counts=value_counts, level_of_measurement=level_of_measurement)
+    value_domain=value_counts.columns.values.astype(int)
 
-    ci, est = bootstrap(value_counts=value_counts, level_of_measurement=level_of_measurement, num_iterations=1000, confidence_level=0.95, sampling_method= 'krippendorff', return_bootstrap_estimates=True)
-    
-    confidence_at_least_667 = np.mean(est >= 0.667)
-    confidence_at_least_8 = np.mean(est >= 0.8)
-    confidence_lessthan_667 = np.mean(est < 0.667)
-    
-    return print(
-        f"Krippendorff's alpha: {k_alpha:.3f}\n"
-        f"95% CI: {ci[0]:.3f} - {ci[1]:.3f}\n"
-        f"Confidence of data being reliable and alpha being at least 0.8: {confidence_at_least_8 * 100:.1f}%\n"
-        f"Confidence of data being tentatively reliable and alpha being at least 0.667: {confidence_at_least_667 * 100:.1f}%\n"
-        f"Confidence of data being unreliable and alpha being less than 0.667: {confidence_lessthan_667 * 100:.1f}%\n"
-    )
+    # check that at least one text was evaluated by multiple people
+    if value_counts.sum(axis=1).mean() <= 1 or value_counts.std().mean() == 0:
+        return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
+    else:
+        k_alpha = alpha(value_counts=value_counts, level_of_measurement=level_of_measurement, value_domain=value_domain)
+
+        ci_95_2s, est = bootstrap(value_counts=value_counts, level_of_measurement=level_of_measurement, num_iterations=1000, confidence_level=0.95, sampling_method= 'krippendorff', return_bootstrap_estimates=True, value_domain=value_domain)
+        
+        lb_ci_95_1s = np.percentile(est, 5)
+        confidence_at_least_667 = np.mean(est >= 0.667)
+        confidence_at_least_8 = np.mean(est >= 0.8)
+        confidence_lessthan_667 = np.mean(est < 0.667)
+        
+        if out == 'text':
+            return print(
+            f"Krippendorff's alpha: {k_alpha:.3f}\n"
+            f"95% CI: {ci_95_2s[0]:.3f} - {ci_95_2s[1]:.3f}\n"
+            f"Confidence of data being reliable and alpha being at least 0.8: {confidence_at_least_8 * 100:.1f}%\n"
+            f"Confidence of data being tentatively reliable and alpha being at least 0.667: {confidence_at_least_667 * 100:.1f}%\n"
+            f"Confidence of data being unreliable and alpha being less than 0.667: {confidence_lessthan_667 * 100:.1f}%\n"
+            f"Lower bound of 95% one-sided CI: {lb_ci_95_1s:.3f}"
+        )
+        elif out == 'data':
+            return k_alpha, ci_95_2s, confidence_at_least_8, confidence_at_least_667, confidence_lessthan_667, lb_ci_95_1s
+        else:
+            raise ValueError(f"Unsupported output format: {out}")
