@@ -5,6 +5,7 @@ import tiktoken
 from krippendorff import alpha
 from bootstrap_alpha import bootstrap
 import numpy as np
+import anthropic
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -28,6 +29,19 @@ def openai_completion(messages, model, temperature):
             messages=messages
         )
         return completion.choices[0].message.content
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+def anthropic_completion(messages, model, temperature):
+    try:
+        # Assuming you have configured the anthropic client
+        completion = anthropic.Client(api_key="sk-ant-api03").completion(
+            model=model,
+            temperature=temperature,
+            messages=messages
+        )
+        return completion['choices'][0]['message']['content']
     except Exception as e:
         print(f"Error: {e}")
         return None
@@ -71,6 +85,29 @@ def vanilla_score(text, model, temperature, reason=False):
         if reason is None:
             return score, "Failed to get reason."
         return score, reason.strip()
+
+def multi_agent_score(text, model, temperature, reason=False, print=False):
+    # Agent 1 completion
+    messages = [
+        {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
+        {"role": "user", "content": text}
+    ]
+    score_content = get_completion(messages, model, temperature)
+
+    # Agent 2 response
+    messages = [
+        {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
+        {"role": "user", "content": text}
+    ]
+    score_content = get_completion(messages, model, temperature)
+
+    # Moderator summary
+    messages = [
+        {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
+        {"role": "user", "content": text}
+    ]
+    score_content = get_completion(messages, model, temperature)
+
 
 # Kippendorff's alpha analysis
 def kippendorff_analysis(value_counts, level_of_measurement='ordinal', out='data'):
