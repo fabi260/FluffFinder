@@ -1,17 +1,31 @@
 from dotenv import load_dotenv
 import os
-from openai import OpenAI
 import tiktoken
 from krippendorff import alpha
 from bootstrap_alpha import bootstrap
 import numpy as np
+from langchain_anthropic import ChatAnthropic
+from langchain_community.chat_models import ChatDeepInfra
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_openai import ChatOpenAI
 
 # Load environment variables from the .env file
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
+os.environ["OPENAI_API_KEY"] = api_key
+os.environ["DEEPINFRA_API_TOKEN"] = os.getenv("DEEPINFRA_API_KEY")
+os.environ["anthropic_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
 
-# Create the OpenAI client object
-client = OpenAI(api_key=api_key)
+# Mapping of easy model names to actual model identifiers
+MODEL_MAPPING = {
+    "mistral7b": {"model": "mistralai/Mistral-7B-Instruct-v0.3", "provider": "deepinfra"},
+    "mixtral8x22b": {"model": "mistralai/Mistral-7B-Instruct-v0.3", "provider": "deepinfra"},
+    "llama370b": {"model": "meta-llama/Meta-Llama-3-70B-Instruct", "provider": "deepinfra"},
+    "llama38b": {"model": "meta-llama/Meta-Llama-3-8B-Instruct", "provider": "deepinfra"},
+    "claude3opus": {"model": "claude-3-opus-20240229", "provider": "anthropic"},
+    "claude3sonnet": {"model": "claude-3-sonnet-20240229", "provider": "anthropic"},
+    "claude3haiku": {"model": "claude-3-haiku-20240307", "provider": "anthropic"}
+}
 
 # Define constants
 BASE_INSTRUCTION = "Your purpose is to critically evaluate a number of texts on their level of Fluff. Fluff refers to any content that is unnecessary, lacks substance, or does not directly contribute to the main message or purpose of a given text."
@@ -21,36 +35,72 @@ VANILLA_REASON_INSTRUCTION = "Provide a concise reason for your score in less th
 
 # Define wrapper functions for AI model completions
 def openai_completion(messages, model, temperature):
+    llm = ChatOpenAI(
+        model=model,
+        temperature=temperature
+    )
     try:
-        completion = client.chat.completions.create(
-            model=model,
-            temperature=temperature,
-            messages=messages
-        )
-        return completion.choices[0].message.content
+        response = llm.invoke(messages)
+        return response.content
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+# Deepinfra completion
+def deepinfra_completion(model, prompt, temperature):
+    llm = ChatDeepInfra(model_id=model)
+    llm.model_kwargs = {
+        "temperature": temperature
+    }
+    try:
+        response = llm.invoke(prompt)
+        return response.content
     except Exception as e:
         print(f"Error: {e}")
         return None
 
-# Function to get completion from the specified model
-def get_completion(messages, model, temperature): ##TODO: Add llama and claude models and properly integrate their keys
-    prompt = "\n".join([msg["content"] for msg in messages]) # Combine messages into a single prompt for llama and claude models
+# Anthropic completion
+def anthropic_completion(model, prompt, temperature):
+    llm = ChatAnthropic(model=model, temperature=temperature)
+    try:
+        response = llm.invoke(prompt)
+        return response.content
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
     
+# Main function to get completion from the specified model
+def get_completion(messages, model, temperature, api_key=None):
+    # Use model mapping to get the actual model identifier and provider
     if model.startswith("gpt-"):
-        return openai_completion(messages, model, temperature)
-    # elif model == "llama":
-    #     return llama_completion(prompt, api_key, temperature)
-    # elif model == "claude":
-    #     return claude_completion(prompt, api_key, temperature)
+        actual_model = model
+        provider = "openai"
     else:
-        raise ValueError(f"Unsupported model: {model}")
+        model_info = MODEL_MAPPING.get(model)
+        if not model_info:
+            raise ValueError(f"Unsupported model: {model}")
+        
+        actual_model = model_info["model"]
+        provider = model_info["provider"]
+
+    if provider == "openai":
+        return openai_completion(messages, actual_model, temperature)
+    elif provider == "deepinfra":
+        return deepinfra_completion(actual_model, messages, temperature)
+    elif provider == "anthropic":
+        return anthropic_completion(actual_model, messages, temperature)
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
 
 # Vanilla Fluff Evaluator
 def vanilla_score(text, model, temperature, reason=False):
     # Get the fluff score
     messages = [
-        {"role": "system", "content": BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION},
-        {"role": "user", "content": text}
+        SystemMessage(
+            content=BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION
+        ),
+        HumanMessage(
+            content=text
+        )
     ]
     score_content = get_completion(messages, model, temperature)
     
@@ -65,8 +115,12 @@ def vanilla_score(text, model, temperature, reason=False):
     if not reason:
         return score
     else:
-        messages.append({"role": "assistant", "content": score_content})
-        messages.append({"role": "user", "content": VANILLA_REASON_INSTRUCTION})
+        messages.append(AIMessage(
+            content=score_content
+        ))
+        messages.append(HumanMessage(
+            content=VANILLA_REASON_INSTRUCTION
+        ))
         reason = get_completion(messages, model, temperature)
         if reason is None:
             return score, "Failed to get reason."
@@ -103,3 +157,19 @@ def kippendorff_analysis(value_counts, level_of_measurement='ordinal', out='data
             return k_alpha, ci_95_2s, confidence_at_least_8, confidence_at_least_667, confidence_lessthan_667, lb_ci_95_1s
         else:
             raise ValueError(f"Unsupported output format: {out}")
+        
+# Example usage
+if __name__ == "__main__":
+    messages = [
+        SystemMessage(
+            content="Be a helpful assistant and provide a response to the following message."
+        ),
+        HumanMessage(
+            content="Hello, how are you? Please answer in one sentence maximum."
+        )
+    ]
+    model = "gpt-4o"
+    temperature = 0.7
+    
+    completion = get_completion(messages, model, temperature)
+    print(completion)
