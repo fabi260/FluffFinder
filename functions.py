@@ -22,6 +22,7 @@ MODEL_MAPPING = {
     "mixtral8x22b": {"model": "mistralai/Mixtral-8x22B-Instruct-v0.1", "provider": "deepinfra"},
     "llama370b": {"model": "meta-llama/Meta-Llama-3-70B-Instruct", "provider": "deepinfra"},
     "llama38b": {"model": "meta-llama/Meta-Llama-3-8B-Instruct", "provider": "deepinfra"},
+    "llama38b_private": {"model": "gpt-3.5-turbo", "provider": "ommax_vllm"}, # model name is faked for openai compatibility
     "claude3opus": {"model": "claude-3-opus-20240229", "provider": "anthropic"},
     "claude3sonnet": {"model": "claude-3-sonnet-20240229", "provider": "anthropic"},
     "claude3haiku": {"model": "claude-3-haiku-20240307", "provider": "anthropic"}
@@ -38,6 +39,19 @@ def openai_completion(messages, model, temperature):
     llm = ChatOpenAI(
         model=model,
         temperature=temperature
+    )
+    try:
+        response = llm.invoke(messages)
+        return response.content
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+def ommax_completion(messages, model, temperature):
+    llm = ChatOpenAI(
+        model=model,
+        temperature=temperature,
+        api_key=os.getenv("OMMAX_API_KEY"),
+        base_url="http://www.delphi-dialogue.com:8000/v1"
     )
     try:
         response = llm.invoke(messages)
@@ -88,6 +102,8 @@ def get_completion(messages, model, temperature, api_key=None):
         return deepinfra_completion(actual_model, messages, temperature)
     elif provider == "anthropic":
         return anthropic_completion(actual_model, messages, temperature)
+    elif provider == "ommax_vllm":
+        return ommax_completion(messages, actual_model, temperature)
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
