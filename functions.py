@@ -157,19 +157,3 @@ def kippendorff_analysis(value_counts, level_of_measurement='ordinal', out='data
             return k_alpha, ci_95_2s, confidence_at_least_8, confidence_at_least_667, confidence_lessthan_667, lb_ci_95_1s
         else:
             raise ValueError(f"Unsupported output format: {out}")
-        
-# Example usage
-if __name__ == "__main__":
-    messages = [
-        SystemMessage(
-            content="Be a helpful assistant and provide a response to the following message."
-        ),
-        HumanMessage(
-            content="Hello, how are you? Please answer in one sentence maximum."
-        )
-    ]
-    model = "gpt-4o"
-    temperature = 0.7
-    
-    completion = get_completion(messages, model, temperature)
-    print(completion)
