@@ -8,6 +8,8 @@ from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatDeepInfra
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_openai import ChatOpenAI
+from openai import OpenAI
+
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -25,7 +27,15 @@ MODEL_MAPPING = {
     "llama38b_private": {"model": "gpt-3.5-turbo", "provider": "ommax_vllm"}, # model name is faked for openai compatibility
     "claude3opus": {"model": "claude-3-opus-20240229", "provider": "anthropic"},
     "claude3sonnet": {"model": "claude-3-sonnet-20240229", "provider": "anthropic"},
-    "claude3haiku": {"model": "claude-3-haiku-20240307", "provider": "anthropic"}
+    "claude3haiku": {"model": "claude-3-haiku-20240307", "provider": "anthropic"},
+
+    "qwen2": {"model": "Qwen/Qwen2-72B-Instruct", "provider": "deepinfra"},
+    "phi3": {"model": "microsoft/Phi-3-medium-4k-instruct", "provider": "deepinfra"},
+    "wizardLM28x22b": {"model": "microsoft/WizardLM-2-8x22B", "provider": "deepinfra"},
+    "wizardLM27b": {"model": "microsoft/WizardLM-2-7B", "provider": "deepinfra"},
+    "gemma": {"model": "google/gemma-1.1-7b-it", "provider": "deepinfra"},
+    "WizardLM27b": {"model": "microsoft/WizardLM-2-7B", "provider": "deepinfra"},
+    "nemotron4340b": {"model": "nvidia/Nemotron-4-340B-Instruct", "provider": "nvidia"},
 }
 
 # Define constants
@@ -33,6 +43,23 @@ BASE_INSTRUCTION = "Your purpose is to critically evaluate a number of texts on 
 FLUFF_SCORES = "1 (no Fluff), 2 (Little Fluff), 3 (Some Fluff), 4 (Considerable Fluff), 5 (Too much Fluff)."
 VANILLA_SCORE_INSTRUCTION = f"Provide a numerical Fluff score for this text according to the following scale: {FLUFF_SCORES} Your ONLY output is one numerical number (1-5)."
 VANILLA_REASON_INSTRUCTION = "Provide a concise reason for your score in less than 15 words based on the text, your score and your understanding of Fluff."
+
+
+def nvidia_completion(messages, model, temperature):
+    llm = OpenAI(
+        api_key="$DEEPINFRA_API_TOKEN",
+        base_url="https://api.deepinfra.com/v1/openai",
+    )
+    try:
+        response = llm.chat.completions.create(
+        model=model, #"nvidia/Nemotron-4-340B-Instruct",
+        messages=messages,
+        temperature=temperature
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
 
 # Define wrapper functions for AI model completions
 def openai_completion(messages, model, temperature):
@@ -104,6 +131,8 @@ def get_completion(messages, model, temperature, api_key=None):
         return anthropic_completion(actual_model, messages, temperature)
     elif provider == "ommax_vllm":
         return ommax_completion(messages, actual_model, temperature)
+    elif provider == "nvidia":
+        return nvidia_completion(messages, actual_model, temperature)
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
@@ -143,10 +172,45 @@ def vanilla_score(text, model, temperature, reason=False):
         return score, reason.strip()
 
 def multi_agent_score(text, model, temperature, reason=False, print=False):
+    
+    # Agent 1 evaluation
+    messages = [
+        SystemMessage(
+            content=BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION
+        ),
+        HumanMessage(
+            content=text
+        )
+    ]
+    score_content = get_completion(messages, model, temperature)
+
+    # Agent 2 evaluation
+    messages = [
+        SystemMessage(
+            content=BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION
+        ),
+        HumanMessage(
+            content=text
+        )
+    ]
+    score_content = get_completion(messages, model, temperature)
+
+    # Moderator agent summary
+    messages = [
+        SystemMessage(
+            content=BASE_INSTRUCTION + VANILLA_SCORE_INSTRUCTION
+        ),
+        HumanMessage(
+            content=text
+        )
+    ]
+    score_content = get_completion(messages, model, temperature)
+
+
 
 
 # Kippendorff's alpha analysis
-def kippendorff_analysis(value_counts, level_of_measurement='ordinal', out='data'):
+def kippendorff_analysis(value_counts, level_of_measurement='interval', out='data'):
     # Calculate Krippendorff's alpha
     value_domain=value_counts.columns.values.astype(int)
 
