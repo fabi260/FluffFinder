@@ -46,17 +46,21 @@ VANILLA_REASON_INSTRUCTION = "Provide a concise reason for your score in less th
 
 
 def nvidia_completion(messages, model, temperature):
-    llm = OpenAI(
-        api_key="$DEEPINFRA_API_TOKEN",
+    llm = ChatOpenAI(
+        api_key= os.getenv("DEEPINFRA_API_KEY"),
         base_url="https://api.deepinfra.com/v1/openai",
+        temperature=temperature,
+        model=model,
     )
     try:
-        response = llm.chat.completions.create(
-        model=model, #"nvidia/Nemotron-4-340B-Instruct",
-        messages=messages,
-        temperature=temperature
-        )
-        return response.choices[0].message.content
+        response = llm.invoke(messages)
+        return response.content
+        # response = llm.chat.completions.create(
+        # model=model, #"nvidia/Nemotron-4-340B-Instruct",
+        # messages=messages,
+        # temperature=temperature
+        # )
+        # return response.choices[0].message.content
     except Exception as e:
         print(f"Error: {e}")
         return None
