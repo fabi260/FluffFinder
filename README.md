@@ -12,7 +12,7 @@ bootstrap_alpha.py:
 - copy of fast-krippendorff repository by Santiago Castro: https://github.com/pln-fing-udelar/fast-krippendorff. 
 
 functions.py:
-- custom functions used for LLM scores
+- custom functions used for LLM scores and Krippendorff analysis
 
 llm_data_collection.ipynb:
 - code used for LLM Data collection
